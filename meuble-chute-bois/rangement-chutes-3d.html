@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Rangement Chutes de Bois - Vue 3D (v6)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1e1e2e; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; }
+#overlay {
+  position: absolute; top: 15px; left: 15px;
+  background: rgba(0,0,0,0.7); color: #eee;
+  padding: 15px 20px; border-radius: 10px;
+  font-size: 13px; line-height: 1.8;
+  backdrop-filter: blur(10px);
+  max-width: 320px;
+}
+#overlay h2 { font-size: 16px; margin-bottom: 8px; color: #f0c060; }
+.zone { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+#dims {
+  position: absolute; top: 15px; right: 15px;
+  background: rgba(0,0,0,0.7); color: #eee;
+  padding: 15px 20px; border-radius: 10px;
+  font-size: 13px; line-height: 1.8;
+  backdrop-filter: blur(10px);
+}
+#dims h3 { font-size: 14px; color: #f0c060; margin-bottom: 5px; }
+#controls {
+  position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.6); color: #aaa;
+  padding: 8px 20px; border-radius: 20px;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h2>Rangement sur roulettes v6</h2>
+  <div class="zone"><span class="dot" style="background:#6B8E23"></span> Gauche (~75 cm) : chutes longues debout, ouvert en haut</div>
+  <div class="zone"><span class="dot" style="background:#CD853F"></span> Droite (~45 cm) : 3 etageres panneaux / planches</div>
+  <div class="zone"><span class="dot" style="background:#5B9BD5"></span> Dos (23 cm) : rack grands panneaux + barre amovible</div>
+  <br>
+  <span style="color:#E8A040; font-size: 11px;">Barre orange = barre amovible dans encoches parois lat.</span><br>
+  <span style="color:#C9A86C; font-size: 11px;">Tasseaux 30x30 (beige) = structure + renforts rack</span><br>
+  <span style="color:#C0C0C0; font-size: 11px;">Equerres metalliques (gris) = 8 fixations en L aux jonctions</span><br>
+  <span style="color:#B0944A; font-size: 11px;">Levre avant 15 cm + levre arriere 18 cm (rigidite + maintien)</span><br>
+  <span style="color:#aaa; font-size: 11px;">Profondeur totale 68 cm = 45 interieur + 23 rack</span>
+</div>
+
+<div id="dims">
+  <h3>Dimensions</h3>
+  Largeur : 120 cm<br>
+  Profondeur totale : 68 cm<br>
+  &nbsp;&nbsp; Interieur : 45 cm<br>
+  &nbsp;&nbsp; Rack arriere : 23 cm<br>
+  Hauteur meuble : ~158 cm (roulettes incl.)<br>
+  Section gauche : ~75 cm (ouverte)<br>
+  Section droite : ~45 cm (etageres)<br>
+  Levre arriere (rack) : 18 cm<br>
+  Levre avant : 15 cm<br>
+  Encoches sur parois lat. + renforts tasseaux<br>
+  Materiau : OSB 18 mm<br>
+  Roulettes : 4 pivotantes (2 a frein)
+</div>
+
+<div id="controls">
+  Clic + glisser pour tourner &nbsp;|&nbsp; Molette pour zoomer
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <button id="toggleBtn" style="background:#444;color:#eee;border:1px solid #666;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;">Masquer chutes</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1e1e2e);
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(150, 250, 200); sun.castShadow = true; scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+fill.position.set(-120, 80, -100); scene.add(fill);
+
+// Materials
+const osbMain    = new THREE.MeshStandardMaterial({ color: 0xC4A265, roughness: 0.85 });
+const osbShelf   = new THREE.MeshStandardMaterial({ color: 0xB89040, roughness: 0.80 });
+const osbDiv     = new THREE.MeshStandardMaterial({ color: 0xAA8530, roughness: 0.80 });
+const osbRack    = new THREE.MeshStandardMaterial({ color: 0xB0944A, roughness: 0.82 });
+const osbStiffen = new THREE.MeshStandardMaterial({ color: 0x9E8035, roughness: 0.85 });
+const barMat     = new THREE.MeshStandardMaterial({ color: 0xE8A040, roughness: 0.5, metalness: 0.1 });
+const notchMat   = new THREE.MeshStandardMaterial({ color: 0xD09030, roughness: 0.6 });
+const casterBody = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5, roughness: 0.3 });
+const casterWheel= new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+
+const pine    = new THREE.MeshStandardMaterial({ color: 0xDEB887, roughness: 0.65 });
+const oak     = new THREE.MeshStandardMaterial({ color: 0x8B6914, roughness: 0.65 });
+const ply     = new THREE.MeshStandardMaterial({ color: 0xD2B48C, roughness: 0.55 });
+const mdf     = new THREE.MeshStandardMaterial({ color: 0xA0855E, roughness: 0.50 });
+const redwood = new THREE.MeshStandardMaterial({ color: 0x9B4D2B, roughness: 0.65 });
+
+const edgeLineMat = new THREE.LineBasicMaterial({ color: 0x8B7355, transparent: true, opacity: 0.35 });
+const zoneLeftColor  = new THREE.MeshStandardMaterial({ color: 0x6B8E23, transparent: true, opacity: 0.22 });
+const zoneRightColor = new THREE.MeshStandardMaterial({ color: 0xCD853F, transparent: true, opacity: 0.18 });
+const zoneBackColor  = new THREE.MeshStandardMaterial({ color: 0x5B9BD5, transparent: true, opacity: 0.20 });
+
+const cart = new THREE.Group();
+
+function box(w, h, d, x, y, z, mat, edges) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  cart.add(m);
+  if (edges !== false) {
+    const e = new THREE.EdgesGeometry(g);
+    const l = new THREE.LineSegments(e, edgeLineMat);
+    l.position.copy(m.position);
+    cart.add(l);
+  }
+  return m;
+}
+
+// ══════════════════════════════════════════════════
+// DIMENSIONS
+// ══════════════════════════════════════════════════
+const W = 120, D = 68, H = 150, T = 1.8;
+const CH = 5;    // caster height
+const BY = CH;   // base Y
+const RACK_D = 23;     // rack depth (included in D)
+const INTERIOR_D = D - RACK_D; // 45 cm interior
+const LIP_H = 18;
+const FRONT_LIP_H = 15;
+
+// Key Z positions (front = +D/2, back = -D/2)
+const FRONT_Z = D / 2;          // +34
+const BACK_Z = -D / 2;          // -34
+// Back panel: its outer face (rack side) is at INTERIOR from front
+// back panel outer face z = FRONT_Z - INTERIOR_D = 34 - 50 = -16
+const BP_OUTER = FRONT_Z - INTERIOR_D;       // -16
+const BP_CENTER = BP_OUTER - T / 2;          // -16.9
+const BP_INNER = BP_OUTER - T;               // -17.8
+// Rack zone: from BP_OUTER (-16) to BACK_Z (-34) = 18cm ✓
+
+// Interior center z (for dividers, shelves)
+const INT_CZ = (FRONT_Z + BP_OUTER) / 2;     // (34 + (-16))/2 = 9
+const INT_DEPTH = INTERIOR_D - T;             // usable interior depth ~48.2
+
+// Rack zone center
+const RACK_CZ = (BP_OUTER + BACK_Z) / 2;     // (-16 + -34)/2 = -25
+
+// Section split
+const LEFT_W = 75, RIGHT_W = 45;
+const DIVIDER_X = -W/2 + LEFT_W;              // 15
+const LEFT_IW = LEFT_W - T;
+const RIGHT_IW = RIGHT_W - T;
+const LEFT_CX = -W/2 + T + LEFT_IW / 2;
+const RIGHT_CX = DIVIDER_X + T + RIGHT_IW / 2;
+
+// Bar height (3/4 of H)
+const BAR_Y = BY + T + H * 0.75;
+
+// ══════════════════════════════════════════════════
+// FLOOR
+// ══════════════════════════════════════════════════
+scene.add(new THREE.GridHelper(400, 20, 0x333355, 0x252540));
+
+// ══════════════════════════════════════════════════
+// CASTERS
+// ══════════════════════════════════════════════════
+function addCaster(cx, cz) {
+  const bg = new THREE.CylinderGeometry(3, 3, 1, 12);
+  const bm = new THREE.Mesh(bg, casterBody);
+  bm.position.set(cx, CH - 0.5, cz); cart.add(bm);
+  const wg = new THREE.CylinderGeometry(2.5, 2.5, 2, 16);
+  const wm = new THREE.Mesh(wg, casterWheel);
+  wm.rotation.z = Math.PI / 2;
+  wm.position.set(cx, 2.5, cz); cart.add(wm);
+}
+addCaster(-W/2 + 9, BACK_Z + 9);
+addCaster( W/2 - 9, BACK_Z + 9);
+addCaster(-W/2 + 9, FRONT_Z - 9);
+addCaster( W/2 - 9, FRONT_Z - 9);
+
+// ══════════════════════════════════════════════════
+// MAIN STRUCTURE
+// ══════════════════════════════════════════════════
+
+// Bottom plate (full 120x68)
+box(W, T, D, 0, BY + T/2, 0, osbMain);
+
+// Left outer panel (full depth 68, full height)
+box(T, H, D, -W/2 + T/2, BY + T + H/2, 0, osbMain);
+
+// Right outer panel (full depth 68, full height)
+box(T, H, D, W/2 - T/2, BY + T + H/2, 0, osbMain);
+
+// Back panel — sits at 50cm from front, separates interior / rack
+box(W - 2*T, H, T, 0, BY + T + H/2, BP_CENTER, osbMain);
+
+// Center divider — only interior depth (50cm), not into rack zone
+box(T, H, INTERIOR_D, DIVIDER_X, BY + T + H/2, FRONT_Z - INTERIOR_D/2, osbMain);
+
+// (plateau haut section droite supprime — remplace par traverse)
+
+// ══════════════════════════════════════════════════
+// LEFT SECTION: 3 vertical slots, separations raccourcies a 100cm
+// ══════════════════════════════════════════════════
+const leftSlotW = LEFT_IW / 3;
+const SLOT_H = 100; // separations raccourcies (pas besoin pleine hauteur)
+const ldiv1X = -W/2 + T + leftSlotW + T/2;
+const ldiv2X = -W/2 + T + 2 * leftSlotW + T + T/2;
+box(T, SLOT_H, INT_DEPTH, ldiv1X, BY + T + SLOT_H/2, INT_CZ, osbDiv);
+box(T, SLOT_H, INT_DEPTH, ldiv2X, BY + T + SLOT_H/2, INT_CZ, osbDiv);
+
+// ══════════════════════════════════════════════════
+// RIGHT SECTION: 3 shelves
+// ══════════════════════════════════════════════════
+const shelf1H = 37, shelf2H = 75, shelf3H = 112;
+box(RIGHT_IW, T, INT_DEPTH, RIGHT_CX, BY + T + shelf1H, INT_CZ, osbShelf);
+box(RIGHT_IW, T, INT_DEPTH, RIGHT_CX, BY + T + shelf2H, INT_CZ, osbShelf);
+box(RIGHT_IW, T, INT_DEPTH, RIGHT_CX, BY + T + shelf3H, INT_CZ, osbShelf);
+
+// ══════════════════════════════════════════════════
+// BACK RACK (18cm deep, within the 68cm footprint)
+// ══════════════════════════════════════════════════
+
+// Lip arriere (levre basse 18cm height) at the very back edge
+box(W - 2*T, LIP_H, T, 0, BY + T + LIP_H/2, BACK_Z + T/2, osbRack);
+
+// Lip avant (levre basse avant 15cm) — rigidite + maintien chutes
+box(W - 2*T, FRONT_LIP_H, T, 0, BY + T + FRONT_LIP_H/2, FRONT_Z - T/2, osbRack);
+
+// Tasseau material (bois de renfort)
+const tassMat = new THREE.MeshStandardMaterial({ color: 0xC9A86C, roughness: 0.6 });
+const TASS = 3; // 30x30mm
+
+// Tasseau horizontal fond / levre avant (T14)
+box(W - 2*T - 2*TASS, TASS, TASS, 0, BY + T + TASS/2, FRONT_Z - T - TASS/2, tassMat);
+
+// Reinforcement: vertical tasseaux on inside face of side panels (rack zone)
+// Double l'epaisseur autour des encoches
+const tassZ = BACK_Z + T + TASS/2 + 1; // colle contre la levre
+box(TASS, H, TASS, -W/2 + T + TASS/2, BY + T + H/2, tassZ, tassMat);
+box(TASS, H, TASS,  W/2 - T - TASS/2, BY + T + H/2, tassZ, tassMat);
+
+// Traverses hautes (rigidite laterale) — arriere (rack) + avant
+box(W - 2*T, TASS, TASS, 0, BY + T + H - TASS/2, tassZ, tassMat);
+box(W - 2*T, TASS, TASS, 0, BY + T + H - TASS/2, FRONT_Z - TASS/2, tassMat);
+
+// Encoches en U dans les parois laterales a ~3/4 hauteur
+const notchH = 5;
+const notchSize = TASS + 2;
+box(notchSize, notchH, notchSize, -W/2 + T + TASS/2, BAR_Y, tassZ, notchMat);
+box(notchSize, notchH, notchSize,  W/2 - T - TASS/2, BAR_Y, tassZ, notchMat);
+
+// Removable bar (barre amovible) — orange, repose dans les encoches des parois
+box(W - 2*T - 2*TASS, 4, 4, 0, BAR_Y + notchH/2 + 2, tassZ, barMat);
+
+// ══════════════════════════════════════════════════
+// ASSEMBLAGE : TASSEAUX STRUCTURELS + EQUERRES
+// ══════════════════════════════════════════════════
+const eqMat = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.8, roughness: 0.2 });
+
+// Helper: L-bracket (equerre metallique)
+function addEq(x, y, z, armDir) {
+  const s = 5, t = 0.6;
+  box(t, s, t, x, y + s/2, z, eqMat);
+  if (armDir === 'x+') box(s, t, t, x + s/2, y + t/2, z, eqMat);
+  if (armDir === 'x-') box(s, t, t, x - s/2, y + t/2, z, eqMat);
+  if (armDir === 'z+') box(t, t, s, x, y + t/2, z + s/2, eqMat);
+  if (armDir === 'z-') box(t, t, s, x, y + t/2, z - s/2, eqMat);
+}
+
+// --- Tasseaux horizontaux sur fond (liaison panneaux verticaux / fond) ---
+// T1: le long paroi G
+box(TASS, TASS, INTERIOR_D - 2*TASS, -W/2 + T + TASS/2, BY + T + TASS/2, INT_CZ, tassMat);
+// T2: le long paroi D
+box(TASS, TASS, INTERIOR_D - 2*TASS, W/2 - T - TASS/2, BY + T + TASS/2, INT_CZ, tassMat);
+// T3: le long back panel (cote interieur)
+box(W - 2*T - 2*TASS, TASS, TASS, 0, BY + T + TASS/2, BP_OUTER + TASS/2, tassMat);
+// T4: le long cloison
+box(TASS, TASS, INTERIOR_D - 2*TASS, DIVIDER_X, BY + T + TASS/2, INT_CZ, tassMat);
+
+// --- Tasseaux verticaux (jonctions panneaux / back panel, cote interieur) ---
+// T5: paroi G / back
+box(TASS, H - 2*TASS, TASS, -W/2 + T + TASS/2, BY + T + H/2, BP_INNER + TASS/2, tassMat);
+// T6: paroi D / back
+box(TASS, H - 2*TASS, TASS, W/2 - T - TASS/2, BY + T + H/2, BP_INNER + TASS/2, tassMat);
+// T7: cloison / back
+box(TASS, H - 2*TASS, TASS, DIVIDER_X, BY + T + H/2, BP_INNER + TASS/2, tassMat);
+
+// --- Supports etageres (tasseaux sous chaque etagere, AV + AR) ---
+[shelf1H, shelf2H, shelf3H].forEach(sh => {
+  // Cote cloison (gauche des etageres)
+  box(TASS, TASS, TASS, DIVIDER_X + T + TASS/2, BY + T + sh - TASS, FRONT_Z - TASS/2, tassMat);
+  box(TASS, TASS, TASS, DIVIDER_X + T + TASS/2, BY + T + sh - TASS, BP_OUTER + TASS + TASS/2, tassMat);
+  // Cote paroi D (droite des etageres)
+  box(TASS, TASS, TASS, W/2 - T - TASS/2, BY + T + sh - TASS, FRONT_Z - TASS/2, tassMat);
+  box(TASS, TASS, TASS, W/2 - T - TASS/2, BY + T + sh - TASS, BP_OUTER + TASS + TASS/2, tassMat);
+});
+
+// --- 8 Equerres metalliques aux jonctions cles ---
+const eqY = BY + T + 0.5;
+// Paroi G / fond (avant + arriere)
+addEq(-W/2 + T + 1, eqY, FRONT_Z - 10, 'x+');
+addEq(-W/2 + T + 1, eqY, BP_OUTER + 10, 'x+');
+// Paroi D / fond (avant + arriere)
+addEq(W/2 - T - 1, eqY, FRONT_Z - 10, 'x-');
+addEq(W/2 - T - 1, eqY, BP_OUTER + 10, 'x-');
+// Back panel / fond (gauche + droite)
+addEq(-W/4, eqY, BP_OUTER + 1, 'z+');
+addEq( W/4, eqY, BP_OUTER + 1, 'z+');
+// Cloison / fond (avant + arriere)
+addEq(DIVIDER_X + 1, eqY, FRONT_Z - 15, 'x+');
+addEq(DIVIDER_X + 1, eqY, BP_OUTER + 10, 'x+');
+
+// ══════════════════════════════════════════════════
+// Zone indicator strips
+// ══════════════════════════════════════════════════
+box(0.5, H, 1.5, -W/2 - 3, BY + T + H/2, FRONT_Z - 10, zoneLeftColor, false);
+box(0.5, H, 1.5, W/2 + 3,  BY + T + H/2, FRONT_Z - 10, zoneRightColor, false);
+box(1.5, H, 0.5, 0, BY + T + H/2, BACK_Z - 3, zoneBackColor, false);
+
+// ══════════════════════════════════════════════════
+// EXAMPLE WOOD PIECES (dans un groupe togglable)
+// ══════════════════════════════════════════════════
+const scrapsGroup = new THREE.Group();
+cart.add(scrapsGroup);
+
+function sbox(w, h, d, x, y, z, mat) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  scrapsGroup.add(m);
+  return m;
+}
+
+// LEFT SECTION — Long pieces standing up
+const s1cx = -W/2 + T + leftSlotW/2;
+sbox(3, 140, 3, s1cx - 6, BY + T + 70, INT_CZ + 5, pine);
+sbox(4, 170, 2, s1cx - 1, BY + T + 85, INT_CZ, oak);
+sbox(2, 120, 4, s1cx + 4, BY + T + 60, INT_CZ + 12, redwood);
+sbox(3, 190, 3, s1cx - 4, BY + T + 95, INT_CZ - 8, ply);
+sbox(5, 100, 2, s1cx + 7, BY + T + 50, INT_CZ - 14, mdf);
+
+const s2cx = -W/2 + T + leftSlotW + T + leftSlotW/2;
+sbox(5, 130, 2, s2cx, BY + T + 65, INT_CZ + 5, oak);
+sbox(3, 180, 5, s2cx + 6, BY + T + 90, INT_CZ - 6, pine);
+sbox(4, 110, 3, s2cx - 5, BY + T + 55, INT_CZ + 12, mdf);
+sbox(2, 160, 4, s2cx + 3, BY + T + 80, INT_CZ - 12, redwood);
+
+const s3cx = -W/2 + T + 2*leftSlotW + 2*T + leftSlotW/2;
+sbox(4, 150, 4, s3cx - 3, BY + T + 75, INT_CZ + 2, ply);
+sbox(2, 200, 3, s3cx + 4, BY + T + 100, INT_CZ + 10, oak);
+sbox(5, 90, 2, s3cx - 6, BY + T + 45, INT_CZ - 6, pine);
+sbox(3, 170, 3, s3cx + 1, BY + T + 85, INT_CZ - 14, redwood);
+
+// RIGHT SECTION — Panels on shelves
+const rs0y = BY + T;
+sbox(35, 1.5, 28, RIGHT_CX - 2, rs0y + shelf1H - 5, INT_CZ + 3, ply);
+sbox(30, 1.2, 22, RIGHT_CX + 3, rs0y + shelf1H - 8, INT_CZ - 4, mdf);
+sbox(25, 1.8, 20, RIGHT_CX - 5, rs0y + shelf1H - 12, INT_CZ + 8, oak);
+
+const rs1y = BY + T + shelf1H + T;
+sbox(38, 1.5, 30, RIGHT_CX, rs1y + 1, INT_CZ + 2, pine);
+sbox(32, 2.0, 25, RIGHT_CX - 2, rs1y + 3, INT_CZ - 3, ply);
+sbox(28, 1.2, 18, RIGHT_CX + 4, rs1y + 5.5, INT_CZ + 7, redwood);
+
+const rs2y = BY + T + shelf2H + T;
+sbox(40, 1.8, 32, RIGHT_CX + 1, rs2y + 1, INT_CZ, oak);
+sbox(22, 1.5, 20, RIGHT_CX - 6, rs2y + 3.3, INT_CZ + 8, mdf);
+sbox(30, 2.2, 24, RIGHT_CX + 3, rs2y + 5, INT_CZ - 5, pine);
+
+const rs3y = BY + T + shelf3H + T;
+sbox(36, 1.8, 26, RIGHT_CX, rs3y + 1, INT_CZ + 2, ply);
+sbox(24, 2.0, 18, RIGHT_CX - 4, rs3y + 3.8, INT_CZ - 6, redwood);
+sbox(30, 1.5, 22, RIGHT_CX + 5, rs3y + 5.6, INT_CZ + 10, oak);
+
+// BACK RACK — Large panels in the 18cm rack zone
+const pz1 = BP_OUTER - 3;
+const pz2 = BP_OUTER - 7;
+const pz3 = BP_OUTER - 12;
+
+sbox(100, 140, 1.8, -5, BY + T + LIP_H + 70, pz1, ply);
+sbox(50, 170, 1.5, -25, BY + T + LIP_H + 85, pz2, oak);
+sbox(70, 120, 1.5, 10, BY + T + LIP_H + 60, pz2 - 2, mdf);
+sbox(40, 80, 1.2, 35, BY + T + LIP_H + 40, pz1 - 2, pine);
+sbox(60, 110, 1.8, -10, BY + T + LIP_H + 55, pz3, redwood);
+
+scene.add(cart);
+
+// Camera — start from back-side to show rack
+let theta = 3.9, phi = 0.85, radius = 400;
+const target = new THREE.Vector3(0, 90, 0);
+
+function updateCam() {
+  camera.position.set(
+    target.x + radius * Math.sin(phi) * Math.cos(theta),
+    target.y + radius * Math.cos(phi),
+    target.z + radius * Math.sin(phi) * Math.sin(theta)
+  );
+  camera.lookAt(target);
+}
+updateCam();
+
+let drag = false, px = 0, py = 0;
+const cvs = renderer.domElement;
+cvs.addEventListener('mousedown', e => { drag = true; px = e.clientX; py = e.clientY; });
+cvs.addEventListener('mousemove', e => {
+  if (!drag) return;
+  theta -= (e.clientX - px) * 0.006;
+  phi = Math.max(0.15, Math.min(2.9, phi + (e.clientY - py) * 0.006));
+  px = e.clientX; py = e.clientY; updateCam();
+});
+cvs.addEventListener('mouseup', () => drag = false);
+cvs.addEventListener('mouseleave', () => drag = false);
+cvs.addEventListener('wheel', e => {
+  radius = Math.max(120, Math.min(700, radius + e.deltaY * 0.5));
+  updateCam();
+});
+cvs.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) { drag = true; px = e.touches[0].clientX; py = e.touches[0].clientY; }
+});
+cvs.addEventListener('touchmove', e => {
+  if (!drag || e.touches.length !== 1) return;
+  theta -= (e.touches[0].clientX - px) * 0.006;
+  phi = Math.max(0.15, Math.min(2.9, phi + (e.touches[0].clientY - py) * 0.006));
+  px = e.touches[0].clientX; py = e.touches[0].clientY; updateCam();
+  e.preventDefault();
+}, { passive: false });
+cvs.addEventListener('touchend', () => drag = false);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+let lastInteraction = Date.now();
+cvs.addEventListener('mousedown', () => lastInteraction = Date.now());
+cvs.addEventListener('wheel', () => lastInteraction = Date.now());
+cvs.addEventListener('touchstart', () => lastInteraction = Date.now());
+
+// Toggle scraps visibility
+const btn = document.getElementById('toggleBtn');
+let scrapsVisible = true;
+btn.addEventListener('click', () => {
+  scrapsVisible = !scrapsVisible;
+  scrapsGroup.visible = scrapsVisible;
+  btn.textContent = scrapsVisible ? 'Masquer chutes' : 'Afficher chutes';
+  btn.style.background = scrapsVisible ? '#444' : '#6B8E23';
+});
+
+(function animate() {
+  requestAnimationFrame(animate);
+  if (Date.now() - lastInteraction > 3000) { theta += 0.002; updateCam(); }
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

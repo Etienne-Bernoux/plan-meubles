@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Meuble Cantinières - Vue 3D v7</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; font-family: 'Segoe UI', sans-serif; overflow: hidden; color: #eee; }
+#info {
+  position: absolute; top: 10px; left: 10px; z-index: 10;
+  background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;
+  max-width: 320px; font-size: 13px; line-height: 1.5;
+}
+#info h2 { margin-bottom: 8px; color: #f0a040; font-size: 16px; }
+#info ul { padding-left: 18px; }
+#info li { margin-bottom: 4px; }
+#controls {
+  position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+  z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+#controls button {
+  background: #f0a040; border: none; color: #1a1a2e; padding: 8px 16px;
+  border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+#controls button:hover { background: #ffb860; }
+#controls button.active { background: #ff6040; color: #fff; }
+.dim-label {
+  position: absolute; top: 10px; right: 10px; z-index: 10;
+  background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;
+  font-size: 13px; line-height: 1.6;
+}
+.dim-label h3 { color: #f0a040; margin-bottom: 6px; }
+.dim-label .section { color: #ccc; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div id="info">
+  <h2>Meuble Cantinières v7</h2>
+  <ul>
+    <li><strong>Niv. 1 (bas, 48cm) :</strong> grande cantinière 100×55×40 sur plateau OSB coulissant</li>
+    <li><strong>Niv. 2 (milieu, 90cm) :</strong> petite cantinière 90×50×37, fixe, couvercle 90° en place</li>
+    <li><strong>Niv. 3 (haut, 45cm) :</strong> étagère OSB libre</li>
+    <li><strong>Structure :</strong> OSB 18mm, façade ouverte, côtés & dos fermés</li>
+  </ul>
+</div>
+
+<div class="dim-label">
+  <h3>Dimensions meuble</h3>
+  Largeur : ~108 cm<br>
+  Profondeur : 60 cm<br>
+  Hauteur totale : ~189 cm<br>
+  <div class="section">
+    <h3>Niveaux</h3>
+    Niv. 1 : 48 cm (plateau coulissant)<br>
+    Niv. 2 : 90 cm (fixe, couvercle 90°)<br>
+    Niv. 3 : 45 cm (étagère libre)<br>
+  </div>
+  <div class="section">
+    <h3>Cantinières</h3>
+    Grande : 100×55×40 cm / 11.6 kg<br>
+    Petite : 90×50×37 cm / 9.5 kg
+  </div>
+</div>
+
+<div id="controls">
+  <button onclick="resetView()">Vue face</button>
+  <button onclick="sideView()">Vue côté</button>
+  <button onclick="topView()">Vue dessus</button>
+  <button id="btnPull1" onclick="togglePull()">Tirer niv.1</button>
+  <button id="btnLid1" onclick="toggleLid(0)">Couvercle niv.1</button>
+  <button id="btnLid2" onclick="toggleLid(1)">Couvercle niv.2</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 5); dirLight.castShadow = true;
+scene.add(dirLight);
+const fill = new THREE.DirectionalLight(0xffffff, 0.3);
+fill.position.set(-3, 4, -3); scene.add(fill);
+
+// Materials
+const osbMat = new THREE.MeshLambertMaterial({ color: 0xc4a35a });
+const osbDarkMat = new THREE.MeshLambertMaterial({ color: 0xb89040 });
+const cantMat = new THREE.MeshLambertMaterial({ color: 0x556b2f });
+const cantDarkMat = new THREE.MeshLambertMaterial({ color: 0x4a5f28 });
+const lidMat = new THREE.MeshLambertMaterial({ color: 0x3d5220 });
+const wheelMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+const railMat = new THREE.MeshLambertMaterial({ color: 0x888888 });
+const floorMat = new THREE.MeshLambertMaterial({ color: 0x2a2a3e });
+
+// Scale: 1 unit = 10cm
+const OSB = 0.18;
+
+// Grande cantinière
+const G_W = 10.0;  // 100cm
+const G_D = 5.5;   // 55cm
+const G_H = 4.0;   // 40cm
+// Petite cantinière
+const P_W = 9.0;   // 90cm
+const P_D = 5.0;   // 50cm
+const P_H = 3.7;   // 37cm
+
+const LID_H = 0.35;
+
+const MW = G_W + 0.8;  // 108cm
+const MD = 6.0;         // 60cm
+const WHEEL_H = 0.6;
+
+// Corrected level heights
+const LEVEL1_H = 4.8;  // 48cm
+const LEVEL2_H = 9.0;  // 90cm
+const LEVEL3_H = 4.5;  // 45cm
+
+const meubleGroup = new THREE.Group();
+scene.add(meubleGroup);
+
+// Floor
+const floorMesh = new THREE.Mesh(new THREE.BoxGeometry(30, 0.1, 20), floorMat);
+floorMesh.position.set(0, -0.05, 0); floorMesh.receiveShadow = true;
+scene.add(floorMesh);
+scene.add(new THREE.GridHelper(20, 20, 0x3a3a5e, 0x2a2a4e)).position.y = 0.01;
+
+const baseY = WHEEL_H;
+
+// Wheels
+function createWheel(x, z) {
+  const w = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 16), wheelMat);
+  w.rotation.z = Math.PI / 2; w.position.set(x, 0.28, z);
+  meubleGroup.add(w);
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.35, 0.22), wheelMat);
+  b.position.set(x, 0.42, z); meubleGroup.add(b);
+}
+const wxp = MW / 2 - 0.5, wzp = MD / 2 - 0.5;
+createWheel(-wxp, -wzp); createWheel(wxp, -wzp);
+createWheel(-wxp, wzp); createWheel(wxp, wzp);
+
+// Shelf positions
+const shelfYs = [
+  baseY,                                          // bottom (base)
+  baseY + LEVEL1_H,                               // shelf between level 1 and 2
+  baseY + LEVEL1_H + LEVEL2_H,                    // shelf between level 2 and 3
+  baseY + LEVEL1_H + LEVEL2_H + LEVEL3_H         // top
+];
+
+// Fixed shelves (level 1-2 separator, level 2-3 separator, top)
+[shelfYs[1], shelfYs[2], shelfYs[3]].forEach(y => {
+  const s = new THREE.Mesh(new THREE.BoxGeometry(MW, OSB, MD), osbMat);
+  s.position.set(0, y, 0); s.castShadow = true; meubleGroup.add(s);
+});
+
+// Bottom base shelf (thin, just structural under the rails)
+const baseShelf = new THREE.Mesh(new THREE.BoxGeometry(MW, OSB, MD), osbMat);
+baseShelf.position.set(0, baseY, 0); baseShelf.castShadow = true;
+meubleGroup.add(baseShelf);
+
+// Side panels
+const totalH = shelfYs[3] - baseY;
+const sideGeo = new THREE.BoxGeometry(OSB, totalH, MD);
+const ls = new THREE.Mesh(sideGeo, osbMat);
+ls.position.set(-MW / 2 + OSB / 2, baseY + totalH / 2, 0); meubleGroup.add(ls);
+const rs = new THREE.Mesh(sideGeo, osbMat);
+rs.position.set(MW / 2 - OSB / 2, baseY + totalH / 2, 0); meubleGroup.add(rs);
+
+// Back
+const bk = new THREE.Mesh(new THREE.BoxGeometry(MW, totalH, OSB), osbMat);
+bk.position.set(0, baseY + totalH / 2, -MD / 2 + OSB / 2); meubleGroup.add(bk);
+
+// Rails level 1 (on side panels)
+const railGeo = new THREE.BoxGeometry(0.12, 0.12, MD - 0.4);
+const rleft = new THREE.Mesh(railGeo, railMat);
+rleft.position.set(-G_W / 2 + 0.3, baseY + OSB + 0.15, 0); meubleGroup.add(rleft);
+const rright = new THREE.Mesh(railGeo, railMat);
+rright.position.set(G_W / 2 - 0.3, baseY + OSB + 0.15, 0); meubleGroup.add(rright);
+
+// === Helper: build cantiniere ===
+function buildCantiniere(parentGroup, cw, cd, ch, yOffset) {
+  const bodyH = ch - LID_H;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(cw, bodyH, cd), cantMat);
+  body.position.set(0, yOffset + bodyH / 2, 0); body.castShadow = true;
+  parentGroup.add(body);
+
+  // Lid pivot - hinge at back top edge along X
+  const lidPivot = new THREE.Group();
+  lidPivot.position.set(0, yOffset + bodyH, -cd / 2);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(cw, LID_H, cd), lidMat);
+  lid.position.set(0, LID_H / 2, cd / 2);
+  lidPivot.add(lid);
+  parentGroup.add(lidPivot);
+
+  // Handle front
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 0.15), wheelMat);
+  handle.position.set(0, yOffset + bodyH * 0.5, cd / 2 + 0.1);
+  parentGroup.add(handle);
+
+  // Detail stripes
+  const sg = new THREE.BoxGeometry(cw + 0.02, 0.25, cd + 0.02);
+  const s1 = new THREE.Mesh(sg, cantDarkMat); s1.position.set(0, yOffset + 0.12, 0); parentGroup.add(s1);
+  const s2 = new THREE.Mesh(sg, cantDarkMat); s2.position.set(0, yOffset + bodyH - 0.12, 0); parentGroup.add(s2);
+
+  // Corners
+  const cg = new THREE.BoxGeometry(0.3, bodyH + 0.02, 0.3);
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sz]) => {
+    const c = new THREE.Mesh(cg, cantDarkMat);
+    c.position.set(sx * (cw/2 - 0.15), yOffset + bodyH / 2, sz * (cd/2 - 0.15));
+    parentGroup.add(c);
+  });
+
+  return lidPivot;
+}
+
+// === SLIDING TRAY + GRANDE CANTINIERE (level 1) ===
+const slidingGroup = new THREE.Group();
+
+// Plateau OSB coulissant
+const trayW = G_W + 0.2;
+const trayD = G_D + 0.3;
+const tray = new THREE.Mesh(new THREE.BoxGeometry(trayW, OSB, trayD), osbDarkMat);
+tray.position.set(0, 0, 0); tray.castShadow = true;
+slidingGroup.add(tray);
+
+// Rebords (calage cantinière)
+const rebSideGeo = new THREE.BoxGeometry(0.2, 0.4, trayD);
+const rebL = new THREE.Mesh(rebSideGeo, osbDarkMat);
+rebL.position.set(-G_W / 2, 0.25, 0); slidingGroup.add(rebL);
+const rebR = new THREE.Mesh(rebSideGeo, osbDarkMat);
+rebR.position.set(G_W / 2, 0.25, 0); slidingGroup.add(rebR);
+const rebBack = new THREE.Mesh(new THREE.BoxGeometry(trayW, 0.4, 0.2), osbDarkMat);
+rebBack.position.set(0, 0.25, -G_D / 2 - 0.05); slidingGroup.add(rebBack);
+
+// Grande cantinière on tray
+const cantYOnTray = OSB / 2 + 0.15;
+const lid1 = buildCantiniere(slidingGroup, G_W, G_D, G_H, cantYOnTray);
+
+// Position sliding group: sits on base shelf + rail height
+slidingGroup.position.set(0, baseY + OSB + 0.3, 0);
+meubleGroup.add(slidingGroup);
+
+// === PETITE CANTINIERE (fixed, centered on level 2 shelf) ===
+const cant2Group = new THREE.Group();
+const lid2 = buildCantiniere(cant2Group, P_W, P_D, P_H, 0);
+cant2Group.position.set(0, shelfYs[1] + OSB / 2 + 0.2, 0);
+meubleGroup.add(cant2Group);
+
+const lids = [lid1, lid2];
+
+// Top shelf items
+function createBox(x, y, z, w, h, d, color) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+  m.position.set(x, y, z); m.castShadow = true; meubleGroup.add(m);
+}
+const topY = shelfYs[2] + OSB / 2;
+createBox(-3, topY + 1.5, 0, 2.5, 3, 2.5, 0xd4a574);
+createBox(0, topY + 1, 0.5, 2, 2, 2, 0xa0522d);
+createBox(2.5, topY + 0.75, -0.5, 1.5, 1.5, 1.5, 0x8fbc8f);
+createBox(4, topY + 1.2, 0.5, 1, 2.4, 1, 0xcd853f);
+
+// === CAMERA ===
+let isDragging = false, prevMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.7, phi: 0.85, radius: 22 };
+
+function updateCamera() {
+  const ly = 6;
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi) + ly * 0.3;
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.position.y = Math.max(camera.position.y, 1);
+  camera.lookAt(0, ly, 0);
+}
+renderer.domElement.addEventListener('mousedown', (e) => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  spherical.theta -= (e.clientX - prevMouse.x) * 0.005;
+  spherical.phi = Math.max(0.2, Math.min(Math.PI - 0.1, spherical.phi + (e.clientY - prevMouse.y) * 0.005));
+  prevMouse = { x: e.clientX, y: e.clientY }; updateCamera();
+});
+renderer.domElement.addEventListener('mouseup', () => isDragging = false);
+renderer.domElement.addEventListener('mouseleave', () => isDragging = false);
+renderer.domElement.addEventListener('wheel', (e) => {
+  spherical.radius = Math.max(8, Math.min(40, spherical.radius + e.deltaY * 0.02)); updateCamera();
+});
+updateCamera();
+
+// === INTERACTION STATES ===
+let pulled = false, pullProgress = 0;
+let lidStates = [false, false];
+let lidProgresses = [0, 0];
+const PULL_DIST = 5.8; // 58cm full extraction
+const LID_90 = -Math.PI / 2; // exactly 90°
+
+function togglePull() {
+  pulled = !pulled;
+  document.getElementById('btnPull1').classList.toggle('active', pulled);
+}
+function toggleLid(i) {
+  lidStates[i] = !lidStates[i];
+  document.getElementById('btnLid' + (i + 1)).classList.toggle('active', lidStates[i]);
+}
+
+function resetView() { spherical = { theta: Math.PI / 2, phi: 1.0, radius: 22 }; updateCamera(); }
+function sideView() { spherical = { theta: 0, phi: 1.0, radius: 22 }; updateCamera(); }
+function topView() { spherical = { theta: 0.7, phi: 0.25, radius: 24 }; updateCamera(); }
+
+// === ANIMATION ===
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Pull tray + grande cantiniere
+  const pt = pulled ? PULL_DIST : 0;
+  pullProgress += (pt - pullProgress) * 0.06;
+  slidingGroup.position.z = pullProgress;
+
+  // Lid 1: 90° only when fully pulled out
+  const l1t = (pulled && lidStates[0]) ? LID_90 : 0;
+  lidProgresses[0] += (l1t - lidProgresses[0]) * 0.06;
+  lids[0].rotation.x = lidProgresses[0];
+
+  // Lid 2: 90° in place (enough room with 90cm level)
+  const l2t = lidStates[1] ? LID_90 : 0;
+  lidProgresses[1] += (l2t - lidProgresses[1]) * 0.06;
+  lids[1].rotation.x = lidProgresses[1];
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

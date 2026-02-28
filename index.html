@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mes Plans de Meubles</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e; color: #eee;
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh; padding: 40px 20px;
+}
+h1 {
+  text-align: center; margin-bottom: 40px;
+  font-size: 28px; color: #f0a040;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px; max-width: 900px; margin: 0 auto;
+}
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 24px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.card:hover {
+  transform: translateY(-4px);
+  border-color: #f0a040;
+}
+.card h2 { font-size: 18px; margin-bottom: 8px; color: #f0c060; }
+.card p { font-size: 13px; color: #aaa; margin-bottom: 16px; line-height: 1.5; }
+.links { display: flex; gap: 10px; flex-wrap: wrap; }
+.links a {
+  display: inline-block; padding: 6px 14px;
+  background: #f0a040; color: #1a1a2e;
+  text-decoration: none; border-radius: 6px;
+  font-size: 12px; font-weight: 600;
+  transition: background 0.2s;
+}
+.links a:hover { background: #ffb860; }
+.links a.pdf { background: #e06050; color: #fff; }
+.links a.pdf:hover { background: #ff7060; }
+</style>
+</head>
+<body>
+
+<h1>Mes Plans de Meubles</h1>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>Meuble Cantinière</h2>
+    <p>Meuble de rangement style cantinière.</p>
+    <div class="links">
+      <a href="meuble-cantiniere/meuble-cantinieres-3d.html">Vue 3D</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Rangement Chutes de Bois</h2>
+    <p>Meuble de rangement pour chutes de bois, avec zones de tri par taille.</p>
+    <div class="links">
+      <a href="meuble-chute-bois/rangement-chutes-3d.html">Vue 3D</a>
+      <a href="meuble-chute-bois/plan-cote-rangement.pdf" class="pdf">Plan PDF</a>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
