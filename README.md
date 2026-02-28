@@ -4,7 +4,7 @@ Collection de plans de meubles avec vues 3D interactives (Three.js) et plans cot
 
 ## Utilisation
 
-Ouvrir `index.html` dans un navigateur pour accéder à tous les meubles.
+Disponible en ligne : https://etienne-bernoux.github.io/plan-meubles/
 
 ## Meubles disponibles
 
