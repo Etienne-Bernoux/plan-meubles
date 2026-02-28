@@ -41,7 +41,7 @@ canvas { display: block; }
 
 <div id="overlay">
   <h2>Meuble Cellier</h2>
-  <div class="zone"><span class="dot" style="background:#8B4513"></span> Bas (sol+98 → 580 mm) : casier vin 75cl — 40 places</div>
+  <div class="zone"><span class="dot" style="background:#8B4513"></span> Bas (sol+98 → 580 mm) : tasseaux vin 75cl — ~65 places</div>
   <div class="zone"><span class="dot" style="background:#CD853F"></span> Milieu (598 → 1362 mm) : étagères sec — 3 niveaux</div>
   <div class="zone"><span class="dot" style="background:#6B8E23"></span> Haut (1380+ mm) : grillagé anti-rongeurs</div>
   <br>
@@ -75,6 +75,7 @@ canvas { display: block; }
 <div id="controls">
   <button id="btnPipes">Masquer tuyaux</button>
   <button id="btnBottles">Masquer bouteilles</button>
+  <button id="btnRotate">Stopper rotation</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -271,44 +272,64 @@ box(meuble, TASS, cornerH, TASS, IL+TASS/2, Y_BASE_TOP+TASS+cornerH/2, BZ+T+TASS
 box(meuble, TASS, cornerH, TASS, IR-TASS/2, Y_BASE_TOP+TASS+cornerH/2, BZ+T+TASS/2, tassMat);
 
 // ══════════════════════════════════════════════════
-// ZONE VIN — Casier grille (10 col × 4 rangées)
+// ZONE VIN — Tasseaux horizontaux (5 rangées × ~13 bouteilles)
 // ══════════════════════════════════════════════════
 const wineH = Y_WINE_TOP - Y_BASE_TOP; // 48.2cm
-const nCols = 10, nRows = 4;
-const cellW = IW / nCols;     // 11.64cm
-const cellH = wineH / nRows;  // 12.05cm
+const TASS_GAP = 6;                     // gap libre entre 2 tasseaux (cm)
+const TASS_STEP = TASS + TASS_GAP;      // 9cm pas de répétition
+const WINE_ROWS = Math.floor(wineH / TASS_STEP); // 5 rangées
+const BOTTLE_R = 3.75;
+const BOTTLE_L = 30;
 
-for (let i = 1; i < nCols; i++) {
-  box(meuble, T, wineH, SD, IL + i*cellW, Y_BASE_TOP + wineH/2, SCZ, osbDiv);
-}
-for (let j = 1; j < nRows; j++) {
-  box(meuble, IW, T, SD, 0, Y_BASE_TOP + j*cellH, SCZ, osbDiv);
+// 2 rangées de tasseaux en profondeur (avant + arrière)
+const TZ_BACK = BZ + 6;   // 6cm du fond
+const TZ_FRONT = FZ - 6;  // 6cm de la face avant
+
+for (let i = 0; i <= WINE_ROWS; i++) {
+  const ty = Y_BASE_TOP + i * TASS_STEP + TASS / 2;
+  if (ty + TASS / 2 > Y_WINE_TOP) break;
+  // Tasseau arrière
+  box(meuble, IW, TASS, TASS, 0, ty, TZ_BACK, tassMat);
+  // Tasseau avant
+  box(meuble, IW, TASS, TASS, 0, ty, TZ_FRONT, tassMat);
 }
 
 // ══════════════════════════════════════════════════
 // BOUTEILLES (décoratives, dans bottlesGrp)
 // ══════════════════════════════════════════════════
-function addBottle(col, row) {
-  const x = IL + (col + 0.5) * cellW;
-  const y = Y_BASE_TOP + (row + 0.5) * cellH;
-  const g = new THREE.CylinderGeometry(3.5, 3.5, 28, 8);
+const alpha = Math.asin((TASS_GAP / 2) / BOTTLE_R);
+const bottleYOffset = BOTTLE_R * Math.cos(alpha); // hauteur du centre au-dessus du tasseau du bas
+const bottlesPerRow = Math.floor(IW / (BOTTLE_R * 2 + 1)); // ~13
+const bottleSpacing = IW / bottlesPerRow;
+const TZ_MID = (TZ_BACK + TZ_FRONT) / 2;
+
+function addBottle(row, col) {
+  const tassTopY = Y_BASE_TOP + row * TASS_STEP + TASS;
+  const by = tassTopY + bottleYOffset;
+  const bx = IL + bottleSpacing / 2 + col * bottleSpacing;
+  // Corps
+  const g = new THREE.CylinderGeometry(BOTTLE_R, BOTTLE_R, BOTTLE_L - 5, 10);
+  g.rotateX(Math.PI / 2);
   const m = new THREE.Mesh(g, bottleMat);
-  m.rotation.x = Math.PI/2;
-  m.position.set(x, y, SCZ);
+  m.position.set(bx, by, TZ_MID);
   bottlesGrp.add(m);
-  const ng = new THREE.CylinderGeometry(1.2, 2, 6, 8);
+  // Goulot
+  const ng = new THREE.CylinderGeometry(1.0, BOTTLE_R * 0.55, 5, 8);
+  ng.rotateX(Math.PI / 2);
   const nm = new THREE.Mesh(ng, bottleMat);
-  nm.rotation.x = Math.PI/2;
-  nm.position.set(x, y, SCZ + 17);
+  nm.position.set(bx, by, TZ_MID + (BOTTLE_L - 5) / 2 + 2.5);
   bottlesGrp.add(nm);
 }
-const filled = [
-  [0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],
-  [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],
-  [1,2],[2,2],[3,2],[4,2],
-  [0,3],[1,3]
-];
-filled.forEach(([c,r]) => addBottle(c, r));
+
+// Remplir partiellement (aspect réaliste)
+for (let row = 0; row < WINE_ROWS; row++) {
+  const tassTopY = Y_BASE_TOP + row * TASS_STEP + TASS;
+  if (tassTopY + TASS > Y_WINE_TOP) break;
+  const fill = row < 2 ? bottlesPerRow : row < 3 ? Math.floor(bottlesPerRow * 0.7) : Math.floor(bottlesPerRow * 0.3);
+  for (let col = 0; col < fill; col++) {
+    addBottle(row, col);
+  }
+}
 
 // ══════════════════════════════════════════════════
 // PORTES GRILLAGÉES
@@ -412,6 +433,10 @@ document.getElementById('btnPipes').addEventListener('click', function() {
 document.getElementById('btnBottles').addEventListener('click', function() {
   bottlesGrp.visible = !bottlesGrp.visible;
   this.textContent = bottlesGrp.visible ? 'Masquer bouteilles' : 'Afficher bouteilles';
+});
+document.getElementById('btnRotate').addEventListener('click', function() {
+  controls.autoRotate = !controls.autoRotate;
+  this.textContent = controls.autoRotate ? 'Stopper rotation' : 'Reprendre rotation';
 });
 
 (function animate() {

@@ -22,9 +22,11 @@ plan-meuble/
 ## Stack technique — Vues 3D
 
 - **Three.js** importé via CDN (fichier HTML unique, pas de build)
+- **OrbitControls** via CDN (`three@0.128.0/examples/js/controls/OrbitControls.js`)
 - Style : fond sombre (`#1a1a2e`), overlay info en haut à gauche, boutons de contrôle en bas
 - Chaque HTML est autonome (pas de dépendance externe autre que Three.js CDN)
 - Rotation / zoom interactif avec OrbitControls
+- **Bouton « Stopper rotation »** obligatoire sur chaque vue 3D (toggle auto-rotate)
 
 ## Workflow par meuble
 

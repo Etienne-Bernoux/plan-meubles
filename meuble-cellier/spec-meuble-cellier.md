@@ -65,7 +65,7 @@ Identique jusqu'à la séparation sec/grillagé (1380 mm), puis :
 
 | Zone | Intérieur utile | Depuis sol | Description |
 |------|----------------|------------|-------------|
-| Vin (bas) | 482 mm | 98 → 580 | Casiers pour bouteilles 75cl couchées |
+| Vin (bas) | 482 mm | 98 → 580 | Tasseaux horizontaux, bouteilles 75cl couchées (~65 places) |
 | Sec (milieu) | 764 mm | 598 → 1362 | Étagères ouvertes (conserves, bocaux) |
 | Grillagé droit | 502 mm | 1380 → 1882 | Porte grillagée anti-rongeurs |
 | Grillagé gauche | 302 mm | 1380 → 1682 | Porte grillagée anti-rongeurs |
@@ -74,12 +74,15 @@ Identique jusqu'à la séparation sec/grillagé (1380 mm), puis :
 
 ### Zone vin (bas) — 482 mm utile
 
-- Casiers en grille (diviseurs verticaux + horizontaux) en OSB 18mm
+- **Système tasseaux horizontaux** : paires de tasseaux 30×30mm espacés de 60mm (gap libre)
 - Bouteilles 75cl : ~300 mm de long, ~75 mm de diamètre
+- Les bouteilles se calent entre 2 tasseaux (Ø75 > gap 60 → la bouteille repose sur les bords)
+- 2 rangées de tasseaux en profondeur (avant à ~380mm, arrière à ~60mm du fond) pour supporter chaque bouteille
 - Largeur intérieure : 1200 - 2×18 = 1164 mm
-- Profondeur intérieure : 500 - 18 (fond) = 482 mm (pas de panneau devant)
-- Grille : 10 colonnes (~116 mm) × 4 rangées (~120 mm)
-- Total : **40 emplacements**, les bouteilles de 300 mm passent largement en profondeur
+- Pas de répétition vertical : 30 (tasseau) + 60 (gap) = 90 mm → 5 rangées dans 482 mm
+- Bouteilles par rangée : 1164 / (75 + 10) ≈ **13 bouteilles**
+- Total : **5 × 13 = 65 emplacements**
+- Montants latéraux OSB pour visser les tasseaux
 
 ### Zone sec (milieu) — 764 mm utile
 
