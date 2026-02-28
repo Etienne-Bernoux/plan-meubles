@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Casier en X — Démo bouteilles</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; }
+#overlay {
+  position: absolute; top: 15px; left: 15px;
+  background: rgba(0,0,0,0.7); color: #eee;
+  padding: 15px 20px; border-radius: 10px;
+  font-size: 13px; line-height: 1.8;
+  backdrop-filter: blur(10px);
+  max-width: 400px;
+}
+#overlay h2 { font-size: 16px; margin-bottom: 8px; color: #f0a040; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h2>Casier en X — Bouteilles 75cl</h2>
+  <span style="color:#aaa;">
+  2 rangées de X en profondeur (avant + arrière).<br>
+  Les bouteilles reposent dans les V des X.<br><br>
+  <span style="color:#C4A265;">Beige</span> = chutes OSB 18mm<br>
+  <span style="color:#2d5a1b;">Vert</span> = bouteilles 75cl<br><br>
+  Cellule 10cm × 10cm — 10×4 = 40 bouteilles
+  </span>
+</div>
+
+<div id="controls" style="position:absolute;bottom:15px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:8px;">
+  <button id="btnRotate" style="background:#f0a040;border:none;color:#1a1a2e;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Stopper rotation</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ══════════════════════════════════════════════════
+// SCENE
+// ══════════════════════════════════════════════════
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(100, 200, 150); scene.add(sun);
+scene.add(new THREE.DirectionalLight(0xffffff, 0.3)).position.set(-80, 60, -80);
+
+// ══════════════════════════════════════════════════
+// MATÉRIAUX
+// ══════════════════════════════════════════════════
+const matOSB = new THREE.MeshStandardMaterial({ color: 0xC4A265, roughness: 0.8 });
+const matBottle = new THREE.MeshStandardMaterial({ color: 0x2d5a1b, transparent: true, opacity: 0.75 });
+const matCap = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.6, roughness: 0.3 });
+
+// ══════════════════════════════════════════════════
+// DIMENSIONS (cm)
+// ══════════════════════════════════════════════════
+const T = 1.8;          // épaisseur OSB
+const CELL = 10;        // taille d'une cellule (carré)
+const COLS = 11;        // colonnes
+const ROWS = 4;         // rangées
+const BOTTLE_D = 7.5;   // diamètre bouteille
+const BOTTLE_R = BOTTLE_D / 2;
+const BOTTLE_L = 30;    // longueur bouteille
+
+// Positions Z des 2 rangées de X
+const Z_BACK = 0;
+const Z_FRONT = 24;     // ~24cm d'écart, bouteille de 30cm dépasse un peu devant/derrière
+const Z_MID = (Z_BACK + Z_FRONT) / 2;
+const DEPTH = Z_FRONT + T;
+
+const TOTAL_W = COLS * CELL;
+const TOTAL_H = ROWS * CELL;
+
+const group = new THREE.Group();
+
+// ══════════════════════════════════════════════════
+// FONCTIONS UTILITAIRES
+// ══════════════════════════════════════════════════
+function box(w, h, d, x, y, z, mat) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  group.add(mesh);
+  return mesh;
+}
+
+// Crée une planche diagonale (partie d'un X)
+// angle: rotation en Z (radians)
+// cx, cy: centre de la cellule
+// z: position en profondeur
+// halfH: on ne dessine que la moitié haute ou basse (pour l'encoche)
+function halfDiag(cx, cy, z, angle, top) {
+  // Planche complète ferait CELL * sqrt(2) de long
+  // On coupe en deux à mi-hauteur pour l'encoche
+  const fullLen = CELL * Math.SQRT2;
+  const halfLen = fullLen / 2;
+
+  const geo = new THREE.BoxGeometry(T, halfLen, T);
+  const mesh = new THREE.Mesh(geo, matOSB);
+
+  // Décaler la moitié vers le haut ou le bas du centre
+  const offset = halfLen / 4;
+  mesh.position.set(cx, cy + (top ? offset : -offset), z);
+  mesh.rotation.z = angle;
+
+  // Pivoter autour du centre de la cellule
+  // On veut que la planche soit centrée sur (cx, cy) au point d'encoche
+  // Approche simplifiée : on translate le mesh pour que l'encoche soit au centre
+  const pivotY = top ? halfLen / 4 : -halfLen / 4;
+  mesh.position.set(
+    cx + Math.sin(angle) * pivotY,
+    cy + Math.cos(angle) * pivotY,
+    z
+  );
+  mesh.rotation.z = angle;
+
+  group.add(mesh);
+}
+
+// Crée un X complet dans une cellule
+// 4 demi-planches : 2 pour la diag \, 2 pour la diag /
+// Les \ ont l'encoche en haut, les / en bas (ou inversé)
+function makeX(cx, cy, z) {
+  const halfLen = CELL * Math.SQRT2 / 2;
+  const quarterLen = halfLen / 2;
+
+  // Diagonale \ (angle +45°) — encoche en bas → on dessine moitié haute
+  // Haut de la \
+  const g = new THREE.BoxGeometry(T, halfLen * 0.95, T);
+
+  // \ partie haute-gauche
+  const m1 = new THREE.Mesh(g, matOSB);
+  m1.rotation.z = Math.PI / 4;
+  m1.position.set(
+    cx - quarterLen * Math.sin(Math.PI/4) * 0.5,
+    cy + quarterLen * Math.cos(Math.PI/4) * 0.5,
+    z
+  );
+  group.add(m1);
+
+  // \ partie basse-droite
+  const m2 = new THREE.Mesh(g.clone(), matOSB);
+  m2.rotation.z = Math.PI / 4;
+  m2.position.set(
+    cx + quarterLen * Math.sin(Math.PI/4) * 0.5,
+    cy - quarterLen * Math.cos(Math.PI/4) * 0.5,
+    z
+  );
+  group.add(m2);
+
+  // / partie haute-droite
+  const m3 = new THREE.Mesh(g.clone(), matOSB);
+  m3.rotation.z = -Math.PI / 4;
+  m3.position.set(
+    cx + quarterLen * Math.sin(Math.PI/4) * 0.5,
+    cy + quarterLen * Math.cos(Math.PI/4) * 0.5,
+    z
+  );
+  group.add(m3);
+
+  // / partie basse-gauche
+  const m4 = new THREE.Mesh(g.clone(), matOSB);
+  m4.rotation.z = -Math.PI / 4;
+  m4.position.set(
+    cx - quarterLen * Math.sin(Math.PI/4) * 0.5,
+    cy - quarterLen * Math.cos(Math.PI/4) * 0.5,
+    z
+  );
+  group.add(m4);
+}
+
+// Crée un X SIMPLE (juste 2 planches croisées, sans encoche visible)
+function makeXSimple(cx, cy, z) {
+  const diagLen = CELL * 0.95;
+
+  // Planche diagonale \.
+  const g1 = new THREE.BoxGeometry(T, diagLen, T);
+  const m1 = new THREE.Mesh(g1, matOSB);
+  m1.rotation.z = Math.PI / 4;
+  m1.position.set(cx, cy, z);
+  group.add(m1);
+
+  // Planche diagonale /
+  const g2 = new THREE.BoxGeometry(T, diagLen, T);
+  const m2 = new THREE.Mesh(g2, matOSB);
+  m2.rotation.z = -Math.PI / 4;
+  m2.position.set(cx, cy, z);
+  group.add(m2);
+}
+
+// Bouteille couchée le long de Z
+function makeBottle(x, y, z) {
+  // Corps
+  const bodyGeo = new THREE.CylinderGeometry(BOTTLE_R, BOTTLE_R, BOTTLE_L - 5, 12);
+  bodyGeo.rotateX(Math.PI / 2);
+  const body = new THREE.Mesh(bodyGeo, matBottle);
+  body.position.set(x, y, z);
+  group.add(body);
+
+  // Goulot
+  const neckGeo = new THREE.CylinderGeometry(1.0, BOTTLE_R * 0.55, 5, 10);
+  neckGeo.rotateX(Math.PI / 2);
+  const neck = new THREE.Mesh(neckGeo, matBottle);
+  neck.position.set(x, y, z + (BOTTLE_L - 5) / 2 + 2.5);
+  group.add(neck);
+
+  // Capsule
+  const capGeo = new THREE.SphereGeometry(1.1, 8, 8);
+  const cap = new THREE.Mesh(capGeo, matCap);
+  cap.position.set(x, y, z + BOTTLE_L / 2 + 0.3);
+  group.add(cap);
+}
+
+// ══════════════════════════════════════════════════
+// CONSTRUCTION DU CASIER
+// ══════════════════════════════════════════════════
+
+// Base
+box(TOTAL_W + 4, T, DEPTH + 8, 0, -T/2, Z_MID, matOSB);
+
+// Les X dans chaque cellule, 2 rangées en Z
+for (let row = 0; row < ROWS; row++) {
+  for (let col = 0; col < COLS; col++) {
+    const cx = col * CELL - TOTAL_W / 2 + CELL / 2;
+    const cy = row * CELL + CELL / 2;
+
+    makeXSimple(cx, cy, Z_BACK);
+    makeXSimple(cx, cy, Z_FRONT);
+  }
+}
+
+// Séparateurs verticaux entre colonnes (planches droites sur toute la hauteur)
+for (let col = 0; col <= COLS; col++) {
+  const x = col * CELL - TOTAL_W / 2;
+  box(T, TOTAL_H, T, x, TOTAL_H / 2, Z_BACK, matOSB);
+  box(T, TOTAL_H, T, x, TOTAL_H / 2, Z_FRONT, matOSB);
+}
+
+// Bouteilles — posées ENTRE deux X adjacents
+// Le V est formé par la branche droite d'un X et la branche gauche du X suivant
+// Le fond du V est à la frontière entre 2 cellules, au niveau du bas de la rangée
+// Dans un V à 90°, centre bouteille = r / sin(45°) au-dessus du fond
+const vOffset = BOTTLE_R / Math.sin(Math.PI / 4);
+
+for (let row = 0; row < ROWS; row++) {
+  for (let col = 0; col < COLS - 1; col++) {  // N-1 bouteilles par rangée
+    // Position X = entre col et col+1 → à la frontière des cellules
+    const bx = (col + 1) * CELL - TOTAL_W / 2;
+    const cellBottom = row * CELL;
+    const by = cellBottom + vOffset;
+
+    makeBottle(bx, by, Z_MID);
+  }
+}
+
+// Centrer le groupe
+group.position.set(0, 0, -Z_MID);
+scene.add(group);
+
+// Grille au sol
+const grid = new THREE.GridHelper(200, 20, 0x333355, 0x222244);
+grid.position.y = -T;
+scene.add(grid);
+
+// ══════════════════════════════════════════════════
+// CAMERA — OrbitControls
+// ══════════════════════════════════════════════════
+camera.position.set(60, 35, 80);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, TOTAL_H / 2, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.8;
+controls.update();
+
+document.getElementById('btnRotate').addEventListener('click', function() {
+  controls.autoRotate = !controls.autoRotate;
+  this.textContent = controls.autoRotate ? 'Stopper rotation' : 'Reprendre rotation';
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
