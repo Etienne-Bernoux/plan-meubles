@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Meuble Cellier - Vue 3D</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; }
+#overlay {
+  position: absolute; top: 15px; left: 15px;
+  background: rgba(0,0,0,0.7); color: #eee;
+  padding: 15px 20px; border-radius: 10px;
+  font-size: 13px; line-height: 1.8;
+  backdrop-filter: blur(10px);
+  max-width: 340px;
+}
+#overlay h2 { font-size: 16px; margin-bottom: 8px; color: #f0a040; }
+.zone { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.dot { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+#dims {
+  position: absolute; top: 15px; right: 15px;
+  background: rgba(0,0,0,0.7); color: #eee;
+  padding: 15px 20px; border-radius: 10px;
+  font-size: 13px; line-height: 1.8;
+  backdrop-filter: blur(10px);
+}
+#dims h3 { font-size: 14px; color: #f0a040; margin-bottom: 5px; }
+#controls {
+  position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+  z-index: 10; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+#controls button {
+  background: #f0a040; border: none; color: #1a1a2e; padding: 8px 16px;
+  border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+#controls button:hover { background: #ffb860; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <h2>Meuble Cellier</h2>
+  <div class="zone"><span class="dot" style="background:#8B4513"></span> Bas (sol+98 → 580 mm) : casier vin 75cl — 40 places</div>
+  <div class="zone"><span class="dot" style="background:#CD853F"></span> Milieu (598 → 1362 mm) : étagères sec — 3 niveaux</div>
+  <div class="zone"><span class="dot" style="background:#6B8E23"></span> Haut (1380+ mm) : grillagé anti-rongeurs</div>
+  <br>
+  <span style="color:#aaa; font-size: 11px;">Droite : 1900 mm total / Gauche : 1700 mm (sous tuyau)</span><br>
+  <span style="color:#ff6060; font-size: 11px;">Rouge = tuyaux (plafond front-to-back + évac WC verticale)</span><br>
+  <span style="color:#C9A86C; font-size: 11px;">Beige = tasseaux 30×30 (fixation, pas de vis dans la tranche)</span><br>
+  <span style="color:#ff4040; font-size: 11px;">Zone rouge sur fond = encoche évac WC (200 mm, du haut → 900 mm sol)</span>
+</div>
+
+<div id="dims">
+  <h3>Dimensions hors-tout</h3>
+  Largeur : 1200 mm<br>
+  Profondeur : 500 mm<br>
+  Haut droit : 1900 mm (roul. incl.)<br>
+  Haut gauche : 1700 mm<br>
+  Décrochement à 750 mm depuis droite<br>
+  <br>
+  <h3>Empilage (côté droit)</h3>
+  Roulettes : 0 → 80<br>
+  Base OSB : 80 → 98<br>
+  Vin : 98 → 580 (482 utile)<br>
+  Sépar. : 580 → 598<br>
+  Sec : 598 → 1362 (764 utile)<br>
+  Sépar. : 1362 → 1380<br>
+  Grillagé : 1380 → 1882 (502 utile)<br>
+  Top : 1882 → 1900<br>
+  <br>
+  OSB 18 mm / Roulettes 80 mm
+</div>
+
+<div id="controls">
+  <button id="btnPipes">Masquer tuyaux</button>
+  <button id="btnBottles">Masquer bouteilles</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ══════════════════════════════════════════════════
+// SCENE
+// ══════════════════════════════════════════════════
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(150, 250, 200); sun.castShadow = true; scene.add(sun);
+scene.add(new THREE.DirectionalLight(0xffffff, 0.25)).position.set(-120, 80, -100);
+
+// ══════════════════════════════════════════════════
+// MATERIALS
+// ══════════════════════════════════════════════════
+const osbMain  = new THREE.MeshStandardMaterial({ color: 0xC4A265, roughness: 0.85 });
+const osbShelf = new THREE.MeshStandardMaterial({ color: 0xB89040, roughness: 0.80 });
+const osbDiv   = new THREE.MeshStandardMaterial({ color: 0xAA8530, roughness: 0.80 });
+const tassMat  = new THREE.MeshStandardMaterial({ color: 0xC9A86C, roughness: 0.6 });
+const cBody    = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.5, roughness: 0.3 });
+const cWheel   = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+const pipeMat  = new THREE.MeshStandardMaterial({ color: 0xff4040, transparent: true, opacity: 0.35 });
+const evacMat  = new THREE.MeshStandardMaterial({ color: 0xff2020, transparent: true, opacity: 0.4 });
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x806030, roughness: 0.7 });
+const bottleMat= new THREE.MeshStandardMaterial({ color: 0x2d5a1b, transparent: true, opacity: 0.7 });
+const edgeMat  = new THREE.LineBasicMaterial({ color: 0x8B7355, transparent: true, opacity: 0.35 });
+const grillWire= new THREE.MeshBasicMaterial({ color: 0x999999, wireframe: true, transparent: true, opacity: 0.45 });
+
+// ══════════════════════════════════════════════════
+// DIMENSIONS (cm) — from spec empilage
+// ══════════════════════════════════════════════════
+const W = 120, D = 50, T = 1.8;
+
+// Absolute Y positions from floor (cm)
+const Y_BASE_BOT = 8;         // top of casters = bottom of base
+const Y_BASE_TOP = 9.8;       // 80+18 = 98mm
+const Y_WINE_TOP = 58;        // 580mm — top of wine interior
+const Y_SEP1_TOP = 59.8;      // 598mm — top of wine/sec separator
+const Y_SEC_TOP  = 136.2;     // 1362mm — top of sec interior
+const Y_SEP2_TOP = 138;       // 1380mm — top of sec/grill separator
+const Y_TOP_R    = 190;       // 1900mm — total right
+const Y_TOP_L    = 170;       // 1700mm — total left
+const Y_EVAC     = 90;        // 900mm — evac enters wall
+
+// X positions (center = 0, right = +)
+const RE = W/2;                // 60
+const LE = -W/2;               // -60
+const SX = RE - 75;           // -15 (step, 750mm from right)
+const IL = LE + T;             // -58.2 (interior left)
+const IR = RE - T;             // 58.2 (interior right)
+const IW = IR - IL;            // 116.4
+const EX = RE - 95;           // -35 (evac WC center)
+
+// Z positions
+const FZ = D/2;                // 25 (front)
+const BZ = -D/2;               // -25 (back)
+const SD = D - T;              // 48.2 (shelf depth, no front panel)
+const SCZ = FZ - SD/2;        // 0.9 (shelf center Z)
+
+const TASS = 3;                // tasseau 30×30mm
+const FT = 3;                  // frame thickness for doors
+
+// Section widths (interior)
+const rSecIW = IR - (SX + T);  // 71.4 (right grillage section)
+const lSecIW = SX - IL;        // 43.2 (left grillage section)
+const rSecCX = (SX + T + IR) / 2;   // center X right section
+const lSecCX = (IL + SX) / 2;       // center X left section
+
+// Sec shelves: 764mm interior, 2 shelves (18mm each), 3 levels ~243mm
+// Shelf 1 at 598 + 243 = 841mm → 84.1cm from floor
+// Shelf 2 at 841 + 18 + 243 = 1102mm → 110.2cm from floor
+const Y_SS1 = 84.1;
+const Y_SS2 = 110.2;
+
+// ══════════════════════════════════════════════════
+// GROUPS
+// ══════════════════════════════════════════════════
+const meuble = new THREE.Group();
+const pipesGrp = new THREE.Group();
+const bottlesGrp = new THREE.Group();
+meuble.add(pipesGrp);
+meuble.add(bottlesGrp);
+
+// ══════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════
+function box(grp, w, h, d, x, y, z, mat, edges) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  grp.add(m);
+  if (edges !== false) {
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
+    e.position.copy(m.position); grp.add(e);
+  }
+  return m;
+}
+
+function addCaster(x, z) {
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(3,3,1,12), cBody);
+  b.position.set(x, Y_BASE_BOT-0.5, z); meuble.add(b);
+  const w = new THREE.Mesh(new THREE.CylinderGeometry(2.5,2.5,2,16), cWheel);
+  w.rotation.z = Math.PI/2; w.position.set(x, 2.5, z); meuble.add(w);
+}
+
+// ══════════════════════════════════════════════════
+// FLOOR + CASTERS
+// ══════════════════════════════════════════════════
+scene.add(new THREE.GridHelper(400, 20, 0x333355, 0x252540));
+addCaster(LE+8, BZ+8); addCaster(RE-8, BZ+8);
+addCaster(LE+8, FZ-8); addCaster(RE-8, FZ-8);
+
+// ══════════════════════════════════════════════════
+// STRUCTURE PRINCIPALE
+// ══════════════════════════════════════════════════
+
+// Plateau de base (pleine largeur, sur roulettes)
+box(meuble, W, T, D, 0, Y_BASE_BOT + T/2, 0, osbMain);
+
+// Panneau latéral droit (de base_top à top_R)
+const hR = Y_TOP_R - Y_BASE_TOP;
+box(meuble, T, hR, D, RE - T/2, Y_BASE_TOP + hR/2, 0, osbMain);
+
+// Panneau latéral gauche (de base_top à top_L)
+const hL = Y_TOP_L - Y_BASE_TOP;
+box(meuble, T, hL, D, LE + T/2, Y_BASE_TOP + hL/2, 0, osbMain);
+
+// Panneau de fond (pleine largeur, hauteur gauche)
+box(meuble, IW, hL, T, 0, Y_BASE_TOP + hL/2, BZ + T/2, osbMain);
+
+// ══════════════════════════════════════════════════
+// SÉPARATEURS DE ZONES
+// ══════════════════════════════════════════════════
+
+// Séparation vin/sec (à Y=58, épaisseur 18mm → 58 à 59.8)
+box(meuble, IW, T, SD, 0, Y_WINE_TOP + T/2, SCZ, osbShelf);
+
+// Séparation sec/grillagé (à Y=136.2, épaisseur 18mm → 136.2 à 138)
+box(meuble, IW, T, SD, 0, Y_SEC_TOP + T/2, SCZ, osbShelf);
+
+// ══════════════════════════════════════════════════
+// DÉCROCHEMENT (zone grillagée)
+// ══════════════════════════════════════════════════
+
+// Step panel (de sépar. sec/grillagé à top droit)
+const stepH = Y_TOP_R - Y_SEP2_TOP;
+box(meuble, T, stepH, D, SX + T/2, Y_SEP2_TOP + stepH/2, 0, osbMain);
+
+// Extension panneau de fond (de top_L à top_R, section droite)
+const extH = Y_TOP_R - Y_TOP_L;
+box(meuble, rSecIW, extH, T, rSecCX, Y_TOP_L + extH/2, BZ + T/2, osbMain);
+
+// Top panel droit (à Y=188.2, épaisseur 18mm → 188.2 à 190)
+box(meuble, rSecIW, T, D, rSecCX, Y_TOP_R - T/2, 0, osbMain);
+
+// Top panel gauche (à Y=168.2, épaisseur 18mm → 168.2 à 170)
+box(meuble, lSecIW, T, D, lSecCX, Y_TOP_L - T/2, 0, osbMain);
+
+// ══════════════════════════════════════════════════
+// ÉTAGÈRES SEC (2 étagères → 3 niveaux de ~243 mm)
+// ══════════════════════════════════════════════════
+box(meuble, IW, T, SD, 0, Y_SS1 + T/2, SCZ, osbShelf);
+box(meuble, IW, T, SD, 0, Y_SS2 + T/2, SCZ, osbShelf);
+
+// ══════════════════════════════════════════════════
+// TASSEAUX (support étagères + structure)
+// ══════════════════════════════════════════════════
+function addTass(yBot) {
+  const ty = yBot - TASS/2;
+  box(meuble, TASS, TASS, SD-2*TASS, IL+TASS/2, ty, SCZ, tassMat);   // gauche
+  box(meuble, TASS, TASS, SD-2*TASS, IR-TASS/2, ty, SCZ, tassMat);   // droite
+  box(meuble, IW-2*TASS, TASS, TASS, 0, ty, BZ+T+TASS/2, tassMat);  // fond
+}
+addTass(Y_WINE_TOP);  // sous sépar. vin/sec
+addTass(Y_SS1);        // sous étagère sec 1
+addTass(Y_SS2);        // sous étagère sec 2
+addTass(Y_SEC_TOP);    // sous sépar. sec/grillagé
+
+// Tasseaux verticaux (rigidité angles arrière)
+const cornerH = hL - 2*TASS;
+box(meuble, TASS, cornerH, TASS, IL+TASS/2, Y_BASE_TOP+TASS+cornerH/2, BZ+T+TASS/2, tassMat);
+box(meuble, TASS, cornerH, TASS, IR-TASS/2, Y_BASE_TOP+TASS+cornerH/2, BZ+T+TASS/2, tassMat);
+
+// ══════════════════════════════════════════════════
+// ZONE VIN — Casier grille (10 col × 4 rangées)
+// ══════════════════════════════════════════════════
+const wineH = Y_WINE_TOP - Y_BASE_TOP; // 48.2cm
+const nCols = 10, nRows = 4;
+const cellW = IW / nCols;     // 11.64cm
+const cellH = wineH / nRows;  // 12.05cm
+
+for (let i = 1; i < nCols; i++) {
+  box(meuble, T, wineH, SD, IL + i*cellW, Y_BASE_TOP + wineH/2, SCZ, osbDiv);
+}
+for (let j = 1; j < nRows; j++) {
+  box(meuble, IW, T, SD, 0, Y_BASE_TOP + j*cellH, SCZ, osbDiv);
+}
+
+// ══════════════════════════════════════════════════
+// BOUTEILLES (décoratives, dans bottlesGrp)
+// ══════════════════════════════════════════════════
+function addBottle(col, row) {
+  const x = IL + (col + 0.5) * cellW;
+  const y = Y_BASE_TOP + (row + 0.5) * cellH;
+  const g = new THREE.CylinderGeometry(3.5, 3.5, 28, 8);
+  const m = new THREE.Mesh(g, bottleMat);
+  m.rotation.x = Math.PI/2;
+  m.position.set(x, y, SCZ);
+  bottlesGrp.add(m);
+  const ng = new THREE.CylinderGeometry(1.2, 2, 6, 8);
+  const nm = new THREE.Mesh(ng, bottleMat);
+  nm.rotation.x = Math.PI/2;
+  nm.position.set(x, y, SCZ + 17);
+  bottlesGrp.add(nm);
+}
+const filled = [
+  [0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],
+  [0,1],[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],
+  [1,2],[2,2],[3,2],[4,2],
+  [0,3],[1,3]
+];
+filled.forEach(([c,r]) => addBottle(c, r));
+
+// ══════════════════════════════════════════════════
+// PORTES GRILLAGÉES
+// ══════════════════════════════════════════════════
+
+function addGrillDoor(x1, x2, yBot, yTop, hasMontant) {
+  const dw = x2 - x1;
+  const dh = yTop - yBot;
+  const cx = (x1 + x2) / 2;
+  const cy = (yBot + yTop) / 2;
+  const fz = FZ - FT/2;
+  // Cadre
+  box(meuble, dw, FT, FT, cx, yTop-FT/2, fz, frameMat);    // haut
+  box(meuble, dw, FT, FT, cx, yBot+FT/2, fz, frameMat);     // bas
+  box(meuble, FT, dh, FT, x1+FT/2, cy, fz, frameMat);       // gauche
+  box(meuble, FT, dh, FT, x2-FT/2, cy, fz, frameMat);       // droite
+  if (hasMontant) {
+    // Montant central (pour 2 lés de grillage 400mm)
+    box(meuble, FT, dh, FT, cx, cy, fz, frameMat);
+    // 2 panneaux grillage
+    const pw = (dw - 3*FT) / 2;
+    const ph = dh - 2*FT;
+    const g1 = new THREE.PlaneGeometry(pw, ph, Math.floor(pw/2.5), Math.floor(ph/2.5));
+    const m1 = new THREE.Mesh(g1, grillWire);
+    m1.position.set(x1 + FT + pw/2, cy, fz); meuble.add(m1);
+    const g2 = new THREE.PlaneGeometry(pw, ph, Math.floor(pw/2.5), Math.floor(ph/2.5));
+    const m2 = new THREE.Mesh(g2, grillWire);
+    m2.position.set(cx + FT/2 + pw/2, cy, fz); meuble.add(m2);
+  } else {
+    // 1 seul panneau grillage
+    const pw = dw - 2*FT;
+    const ph = dh - 2*FT;
+    const g = new THREE.PlaneGeometry(pw, ph, Math.floor(pw/2.5), Math.floor(ph/2.5));
+    const m = new THREE.Mesh(g, grillWire);
+    m.position.set(cx, cy, fz); meuble.add(m);
+  }
+}
+
+// Porte droite (502mm utile, montant central pour 2 lés de 400mm)
+addGrillDoor(SX+T, IR, Y_SEP2_TOP, Y_TOP_R - T, true);
+
+// Porte gauche (302mm utile, 1 lé de 400mm suffit)
+addGrillDoor(IL, SX, Y_SEP2_TOP, Y_TOP_L - T, false);
+
+// Étagère intérieure grillagé droit (à mi-hauteur)
+const grillShelfY = (Y_SEP2_TOP + Y_TOP_R - T) / 2;
+box(meuble, rSecIW - 2*TASS, T, SD - TASS, rSecCX, grillShelfY, SCZ + TASS/2, osbShelf);
+
+// ══════════════════════════════════════════════════
+// TUYAUX CONTRAINTES (ghost)
+// ══════════════════════════════════════════════════
+
+// Tuyau plafond : sort du mur du fond, vient vers l'avant (direction Z)
+// À 1700mm du sol, à gauche du step
+const pipeCeilGeo = new THREE.CylinderGeometry(4, 4, D, 16);
+const pipeCeil = new THREE.Mesh(pipeCeilGeo, pipeMat);
+pipeCeil.rotation.x = Math.PI/2;  // orient along Z (front-to-back)
+pipeCeil.position.set(SX - 15, 170, 0);
+pipesGrp.add(pipeCeil);
+
+// Évac WC : colonne verticale 200×200mm, du plafond → 900mm sol
+const evacPipeH = 110; // afficher de 200cm à 90cm
+box(pipesGrp, 20, evacPipeH, 20, EX, Y_EVAC + evacPipeH/2, BZ - 5, pipeMat, false);
+
+// Marqueur encoche dans le panneau de fond (du haut du panneau à 900mm sol)
+const notchH = Y_TOP_L - Y_EVAC; // de 90cm à 170cm = 80cm
+box(pipesGrp, 20, notchH, T + 1, EX, Y_EVAC + notchH/2, BZ + T/2, evacMat, false);
+
+// ══════════════════════════════════════════════════
+meuble.position.set(100, 0, -D / 2);  // décalé 1m droite, sol à zéro
+scene.add(meuble);
+
+// ══════════════════════════════════════════════════
+// CAMERA — OrbitControls
+// ══════════════════════════════════════════════════
+camera.position.set(80, 250, 320);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, Y_TOP_R / 2 + 100, 0);
+controls.minDistance = 150;
+controls.maxDistance = 800;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.5;
+controls.update();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ══════════════════════════════════════════════════
+// BOUTONS + ANIMATION
+// ══════════════════════════════════════════════════
+
+document.getElementById('btnPipes').addEventListener('click', function() {
+  pipesGrp.visible = !pipesGrp.visible;
+  this.textContent = pipesGrp.visible ? 'Masquer tuyaux' : 'Afficher tuyaux';
+});
+document.getElementById('btnBottles').addEventListener('click', function() {
+  bottlesGrp.visible = !bottlesGrp.visible;
+  this.textContent = bottlesGrp.visible ? 'Masquer bouteilles' : 'Afficher bouteilles';
+});
+
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
