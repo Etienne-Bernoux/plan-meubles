@@ -391,11 +391,19 @@ function addGrillDoor(x1, x2, yBot, yTop, hasMontant) {
   }
 }
 
-// Porte droite (762mm utile, montant central pour 2 lés de 400mm)
-addGrillDoor(SX+T, IR, Y_SEP2_TOP, Y_TOP_R - T, true);
+// Montant central droit (tasseau 30mm entre les 2 portes droites)
+const rMontantX = rSecCX;
+box(meuble, TASS, Y_TOP_R - T - Y_SEP2_TOP, TASS, rMontantX, (Y_SEP2_TOP + Y_TOP_R - T)/2, FZ - FT/2, tassMat);
+// 2 portes droites côte à côte (~342mm chacune, grillage 400mm en 1 lé)
+addGrillDoor(SX+T, rMontantX - TASS/2, Y_SEP2_TOP, Y_TOP_R - T, false);
+addGrillDoor(rMontantX + TASS/2, IR, Y_SEP2_TOP, Y_TOP_R - T, false);
 
-// Porte gauche (562mm utile, 1 lé de 400mm suffit)
-addGrillDoor(IL, SX, Y_SEP2_TOP, Y_TOP_L - T, false);
+// Montant central gauche (tasseau 30mm entre les 2 portes gauches)
+const lMontantX = lSecCX;
+box(meuble, TASS, Y_TOP_L - T - Y_SEP2_TOP, TASS, lMontantX, (Y_SEP2_TOP + Y_TOP_L - T)/2, FZ - FT/2, tassMat);
+// 2 portes gauches côte à côte (~267mm chacune, grillage 400mm en 1 lé)
+addGrillDoor(IL, lMontantX - TASS/2, Y_SEP2_TOP, Y_TOP_L - T, false);
+addGrillDoor(lMontantX + TASS/2, SX, Y_SEP2_TOP, Y_TOP_L - T, false);
 
 // 2 étagères intérieures grillagé droit (762mm utile → 3 niveaux ~242mm)
 const grillIntR = Y_TOP_R - T - Y_SEP2_TOP;  // 76.2

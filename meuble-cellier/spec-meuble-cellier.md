@@ -97,11 +97,12 @@ Identique jusqu'à la séparation sec/grillagé (1120 mm), puis :
 
 ### Zone grillagée (haut)
 
-- **Droite** (762 mm utile) : porte grillagée + 2 étagères intérieures → 3 niveaux ~242 mm
-- **Gauche** (492 mm utile) : porte grillagée + 1 étagère intérieure → 2 niveaux ~237 mm
-- Portes : cadre OSB avec grillage fin (maille ≤ 6 mm, lé de 400 mm), charnières et loquet simple
-- **Porte droite** (~714 mm large) : montant central dans le cadre → 2 lés de grillage
-- **Porte gauche** (~564 mm large) : montant central dans le cadre → 2 lés de grillage
+- **Droite** (762 mm utile) : 2 portes grillagées côte à côte + 2 étagères intérieures → 3 niveaux ~242 mm
+- **Gauche** (492 mm utile) : 2 portes grillagées côte à côte + 1 étagère intérieure → 2 niveaux ~237 mm
+- Portes : cadre bois avec grillage fin (maille ≤ 6 mm, lé de 400 mm), charnières et loquet simple
+- **2 portes droites** : chaque ~342 mm × 762 mm (ouverture 714 mm ÷ 2, montant central tasseau 30 mm) → grillage 400 mm en 1 lé ✓
+- **2 portes gauches** : chaque ~267 mm × 492 mm (ouverture 564 mm ÷ 2, montant central tasseau 30 mm) → grillage 400 mm en 1 lé ✓
+- Total : **6 portes**, chacune couverte par un seul lé de grillage 400 mm
 - Un panneau vertical (step panel) à 750 mm du bord droit sépare les deux sections
 
 ## Construction
